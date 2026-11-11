@@ -1,0 +1,5 @@
+laps/
+__pycache__/
+*.pyc
+.DS_Store
+web/bridge.py

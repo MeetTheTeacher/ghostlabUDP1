@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ghost Lab</title>
+<meta name="description" content="Live F1 26 / F1 25 time trial telemetry with rival ghosts: 3D track map, sectors and traces on your phone.">
+<meta name="theme-color" content="#0a0c10">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ghost Lab">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- ============ Detection screen ============ -->
+<div id="detect" role="dialog" aria-labelledby="dTitle">
+  <div class="dwrap">
+    <div class="dhead">
+      <div class="brand big">GHOST<span>LAB</span></div>
+      <div class="radar" id="radar" aria-hidden="true">
+        <div class="sweep"></div>
+        <i class="blip player"></i><i class="blip pb"></i><i class="blip rival"></i>
+        <div class="core"></div>
+      </div>
+      <h1 id="dTitle">Looking for telemetry…</h1>
+      <p id="dSub" class="muted">Checking your network for the Ghost Lab bridge.</p>
+    </div>
+
+    <ol class="steps">
+      <li id="stBridge" class="step wait"><span class="ic"></span><div><b>Ghost Lab bridge</b><small></small></div></li>
+      <li id="stUdp" class="step idle"><span class="ic"></span><div><b>Game telemetry</b><small></small></div></li>
+      <li id="stSession" class="step idle"><span class="ic"></span><div><b>Session</b><small></small></div></li>
+      <li id="stCars" class="step idle"><span class="ic"></span><div><b>Cars</b><small></small>
+        <div class="carchips"><span class="carchip" data-role="player">You</span><span class="carchip" data-role="pb">PB ghost</span><span class="carchip" data-role="rival">Rival ghost</span></div></div></li>
+    </ol>
+
+    <div class="actions">
+      <button id="dGo" class="btn primary" disabled>Open dashboard</button>
+      <button id="dDemo" class="btn">Try the demo</button>
+    </div>
+
+    <div id="dRemote" class="dcard" hidden>
+      <b>Connect to your bridge</b>
+      <p>Live data comes from the Ghost Lab bridge running on a PC on the same Wi-Fi as your phone. Start it, then enter the “on your phone” address it shows.</p>
+      <form id="remoteForm" class="row">
+        <input id="remoteAddr" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="192.168.1.20:8000" aria-label="Bridge address">
+        <button class="btn primary small" type="submit">Connect</button>
+      </form>
+      <p class="muted small">Your browser will switch to an <code>http://</code> address. That's normal for devices on your own network.</p>
+      <p class="links"><a id="dlBridge" href="bridge.py" download>Download bridge.py</a><a id="repoLink" href="#" target="_blank" rel="noopener" hidden>Setup guide</a></p>
+    </div>
+
+    <div id="dQR" class="dcard qr" hidden>
+      <div id="qrBox"></div>
+      <div><b>Open on your phone</b><p class="muted">Scan with your phone's camera. It must be on the same Wi-Fi as this PC.</p><code id="qrUrl"></code></div>
+    </div>
+
+    <details id="dHelp" class="dcard">
+      <summary>Game settings</summary>
+      <p class="muted small">In the game: Settings → Telemetry Settings → UDP Telemetry Settings.</p>
+      <div id="helpBody"></div>
+      <div id="trouble" hidden>
+        <b class="small">Still nothing?</b>
+        <ul class="small muted">
+          <li>Allow Python through the firewall on <b>private</b> networks (Windows asks the first time).</li>
+          <li>Console and PC must be on the same network. Guest Wi-Fi often blocks this.</li>
+          <li>Only one app can listen on port 20777. Close other telemetry apps or run the bridge with <code>--forward</code>.</li>
+          <li>Telemetry only flows while you're on track, not in menus.</li>
+        </ul>
+      </div>
+    </details>
+  </div>
+</div>
+
+<!-- ============ Dashboard ============ -->
+<div id="app">
+  <header>
+    <div class="brand">GHOST<span>LAB</span></div>
+    <div id="trackName"></div>
+    <button id="pill" class="pill" title="Telemetry status">Connecting…</button>
+  </header>
+
+  <main id="panes">
+    <section id="pane-map" class="pane" aria-label="3D map">
+      <div id="view">
+        <div class="maptools">
+          <div class="chips" id="camChips">
+            <button class="chip" data-cam="orbit">Orbit</button>
+            <button class="chip" data-cam="chase">Chase</button>
+            <button class="chip" data-cam="onboard">Onboard</button>
+            <button class="chip" data-cam="heli">Heli</button>
+            <button class="chip" data-cam="tv">TV</button>
+            <button class="chip" data-cam="top">Top</button>
+            <button class="chip" data-cam="overview">Track</button>
+            <button class="chip" data-cam="free">Free</button>
+          </div>
+          <div class="chips">
+            <div class="seg" id="followChips">
+              <button data-follow="player"><i style="background:var(--player)"></i>You</button>
+              <button data-follow="pb"><i style="background:var(--pb)"></i>PB</button>
+              <button data-follow="rival"><i style="background:var(--rival)"></i>Rival</button>
+            </div>
+            <select id="colorMode" class="chip" aria-label="Track colour">
+              <option value="sector">Sectors</option>
+              <option value="speed">Speed</option>
+              <option value="delta">Gain / loss</option>
+              <option value="plain">Plain</option>
+            </select>
+            <button class="chip tog on" id="tLines">Lines</button>
+            <button class="chip tog on" id="tLabels">Labels</button>
+            <button class="chip tog" id="tMirror" title="Flip the map if a track looks mirrored">Mirror</button>
+          </div>
+        </div>
+        <div id="waiting" class="overlay-msg"><div></div></div>
+        <div id="hud"></div>
+        <div id="camHint">1–8 cameras · Tab switches car · drag to orbit</div>
+      </div>
+    </section>
+
+    <section id="pane-data" class="pane scrolly" aria-label="Live data">
+      <div class="card"><h3>Live</h3><div id="cards"><div class="empty">No cars yet.</div></div></div>
+      <div class="card"><h3>Sectors</h3><table id="sectors"></table></div>
+    </section>
+
+    <section id="pane-traces" class="pane" aria-label="Traces">
+      <div id="grip" title="Drag to resize"></div>
+      <div class="tbar chips">
+        <span id="chips" class="contents"></span>
+        <span class="sep"></span>
+        <button class="chip tog on" id="liveBtn" title="Draw your lap in progress">Live lap</button>
+        <button class="chip icon" id="zoomOut" aria-label="Zoom out">−</button>
+        <button class="chip icon" id="zoomIn" aria-label="Zoom in">+</button>
+        <button class="chip" id="zoomReset">Reset</button>
+      </div>
+      <div class="tbar2"><div id="legend"></div></div>
+      <div id="charts"></div>
+    </section>
+
+    <section id="pane-laps" class="pane scrolly" aria-label="Laps">
+      <div class="card">
+        <h3>Laps <span class="spacer"></span>
+          <button id="autoBtn" class="chip tog on" title="Show the newest lap of each car automatically">Auto</button>
+          <button id="importBtn" class="chip">Import</button>
+          <input type="file" id="fileIn" accept=".csv,text/csv" multiple hidden>
+        </h3>
+        <p class="hint"><span class="tag ref">REF</span> reference for delta &nbsp; <span class="tag cmp">CMP</span> lap compared with it</p>
+        <div id="lapList"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav id="tabs" aria-label="Views">
+    <button data-tab="map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17c-2-3 0-8 4-9s4 3 7 2 4-4 5-1-2 7-6 9-8 2-10-1z"/><circle cx="9" cy="12" r="1.4" fill="currentColor"/></svg>Map</button>
+    <button data-tab="data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><path d="M4 20h16"/></svg>Live</button>
+    <button data-tab="traces"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l4-7 3 4 4-9 3 8 4-3"/><path d="M3 21h18"/></svg>Traces</button>
+    <button data-tab="laps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/></svg>Laps</button>
+  </nav>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
